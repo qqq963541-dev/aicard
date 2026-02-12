@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { View } from '../types';
 
@@ -23,7 +22,7 @@ const Intro: React.FC<IntroProps> = ({ onNext }) => {
                 输入你喜欢的关键词或主题，AI将以此为灵感，通过大模型生成对应的卡牌形象、背景故事以及战斗数据。每次召唤都是未知的惊喜！
               </p>
               <div className="bg-slate-900/50 p-4 rounded-xl text-xs font-mono text-slate-500">
-                // 召唤核心公式：主题关键词 -> 文本模型(Metadata) -> 图像模型(Visuals)
+                {/* 召唤核心公式：主题关键词 -> 文本模型(Metadata) -> 图像模型(Visuals) */}
               </div>
             </div>
           </div>
@@ -58,7 +57,7 @@ const Intro: React.FC<IntroProps> = ({ onNext }) => {
             <div>
               <h3 className="text-xl font-bold mb-3">图鉴成就</h3>
               <p className="text-slate-400 leading-relaxed mb-4">
-                所有抽到的卡牌都将保存在“卡牌收集册”中。根据稀有度（Common, Rare, Epic, Legendary）解锁成就，提升你的召唤师等级。
+                所有抽到的卡牌都将保存在"卡牌收集册"中。根据稀有度（Common, Rare, Epic, Legendary）解锁成就，提升你的召唤师等级。
               </p>
             </div>
           </div>
