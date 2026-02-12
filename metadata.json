@@ -1,0 +1,7 @@
+{
+  "name": "Copy of AI Summoner: Card Master",
+  "description": "An interactive AI-powered card gacha and battle game where players summon unique AI-generated characters and engage in tactical duels.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
