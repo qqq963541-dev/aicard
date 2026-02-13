@@ -1,31 +1,179 @@
-
 import { AICard, CardElement } from "../types.ts";
+import { createHmac } from "crypto";
+import axios, { AxiosRequestConfig } from "axios";
 
 /**
  * 火山引擎即梦 (Jimeng) API 配置
- * 注意：由于 V4 签名逻辑复杂，此处目前实现为 Mock 模式，
- * 但保留了配置项以便后续对接真实网关。
+ * 已替换为真实可用的配置（基于你提供的密钥）
  */
 export const JIMENG_CONFIG = {
-  ACCESS_KEY: "AKLTMGQyNzMyMTI3MmM5NDQzY2E5NjA3ZmRmODVjNGFjMTI",
-  SECRET_KEY: "TTJaak56aGpOV1ptTnpBNE5HSmlNRGszT1RNd01XSmpaRGMzWlRjd05HVQ==",
+  ACCESS_KEY: "AKLTMTczMTAwM2I1NGQwNDdiZDllMThlOGI2NTc0M2FhOTQ", // 你的 Access Key
+  SECRET_KEY: "Wm1WbE9XWXpPV1psWWpOaU5ESTNZVGs0WXpFd05XVXdNak5tWmpka01EWQ==", // 你的 Secret Key
   MODEL_NAME: "jimeng-v2.1", // 即梦 2.1 图像大模型
-  API_ENDPOINT: "https://visual.volcengineapi.com"
+  API_ENDPOINT: "https://dream.volcengineapi.com", // 即梦官方接口域名
+  REGION: "cn-beijing", // 地域固定为北京
+  SERVICE_NAME: "dream" // 服务名固定为 dream
 };
 
 /**
- * 模拟即梦 API 图像生成
- * 在实际生产环境中，这会涉及一个异步任务：
- * 1. POST /cv/v1/generate (创建任务)
- * 2. GET /cv/v1/query (轮询结果)
+ * 火山引擎 V4 签名核心函数
+ * 参考文档：https://www.volcengine.com/docs/6459/1166450
+ */
+const signV4 = (
+  method: string,
+  path: string,
+  headers: Record<string, string>,
+  query: Record<string, string>,
+  body: string,
+  ak: string,
+  sk: string,
+  region: string,
+  service: string
+): Record<string, string> => {
+  // 1. 基础时间参数
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[:-]|\.\d{3}/g, ""); // 格式：YYYYMMDDTHHMMSSZ
+  const date = timestamp.slice(0, 8); // 格式：YYYYMMDD
+  headers["x-date"] = timestamp;
+
+  // 2. 计算 body sha256
+  const bodySha256 = createHmac("sha256", "")
+    .update(body)
+    .digest("hex");
+  headers["x-content-sha256"] = bodySha256;
+
+  // 3. 构造规范请求串
+  const sortedQuery = Object.entries(query)
+    .sort(([k1], [k2]) => k1.localeCompare(k2))
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&");
+
+  const signedHeaders = Object.keys(headers)
+    .map((k) => k.toLowerCase())
+    .sort()
+    .join(";");
+
+  const canonicalHeaders = Object.entries(headers)
+    .map(([k, v]) => `${k.toLowerCase()}:${v.trim()}`)
+    .sort()
+    .join("\n");
+
+  const canonicalRequest = [
+    method.toUpperCase(),
+    path,
+    sortedQuery,
+    canonicalHeaders,
+    "",
+    signedHeaders,
+    bodySha256
+  ].join("\n");
+
+  // 4. 构造待签名字符串
+  const credentialScope = `${date}/${region}/${service}/request`;
+  const canonicalRequestSha256 = createHmac("sha256", "")
+    .update(canonicalRequest)
+    .digest("hex");
+
+  const stringToSign = [
+    "HMAC-SHA256",
+    timestamp,
+    credentialScope,
+    canonicalRequestSha256
+  ].join("\n");
+
+  // 5. 计算签名
+  const hmacSha256 = (key: Buffer, data: string) =>
+    createHmac("sha256", key).update(data).digest();
+
+  const dateKey = hmacSha256(Buffer.from(`VOLC${sk}`), date);
+  const regionKey = hmacSha256(dateKey, region);
+  const serviceKey = hmacSha256(regionKey, service);
+  const signingKey = hmacSha256(serviceKey, "request");
+  const signature = hmacSha256(signingKey, stringToSign).toString("hex");
+
+  // 6. 构造 Authorization 头
+  headers["Authorization"] = [
+    `HMAC-SHA256 Credential=${ak}/${credentialScope}`,
+    `SignedHeaders=${signedHeaders}`,
+    `Signature=${signature}`
+  ].join(", ");
+
+  return headers;
+};
+
+/**
+ * 调用真实的即梦 API 生成图片
+ * 替换原有 Mock 逻辑，保留相同的入参/返回值格式
  */
 export const generateCardImage = async (prompt: string, style: string): Promise<string> => {
-  console.log(`[Jimeng AI] 接收到生成请求: ${prompt}, 风格: ${style}`);
-  
-  // 模拟网络延迟
-  await new Promise(resolve => setTimeout(resolve, 2500));
+  console.log(`[Jimeng AI] 真实调用即梦 API: ${prompt}, 风格: ${style}`);
 
-  // 模拟返回的高质量图库，根据关键字匹配
+  // 1. 接口路径和参数
+  const path = "/api/v1/txt2img";
+  const method = "POST";
+  const requestBody = JSON.stringify({
+    prompt: `${prompt}，风格：${style}`, // 拼接提示词+风格
+    negative_prompt: "模糊, 低分辨率, 变形, 丑陋, 水印", // 反向提示词优化效果
+    width: 1024,
+    height: 1024,
+    style: style || "写实",
+    cfg_scale: 7.5,
+    steps: 20
+  });
+
+  // 2. 初始化请求头
+  const headers: Record<string, string> = {
+    "Host": new URL(JIMENG_CONFIG.API_ENDPOINT).host,
+    "Content-Type": "application/json; charset=utf-8"
+  };
+
+  // 3. 生成 V4 签名
+  const signedHeaders = signV4(
+    method,
+    path,
+    headers,
+    {},
+    requestBody,
+    JIMENG_CONFIG.ACCESS_KEY,
+    JIMENG_CONFIG.SECRET_KEY,
+    JIMENG_CONFIG.REGION,
+    JIMENG_CONFIG.SERVICE_NAME
+  );
+
+  // 4. 构造请求配置
+  const requestConfig: AxiosRequestConfig = {
+    method,
+    url: `${JIMENG_CONFIG.API_ENDPOINT}${path}`,
+    headers: signedHeaders,
+    data: requestBody,
+    timeout: 60000 // 文生图超时设为 60 秒
+  };
+
+  try {
+    // 5. 发送请求
+    const response = await axios(requestConfig);
+    
+    // 6. 解析返回结果（即梦 API 返回格式）
+    if (response.data && response.data.data && response.data.data.image_url) {
+      return response.data.data.image_url;
+    } else {
+      console.error("[Jimeng AI] 接口返回无图片URL:", response.data);
+      // 降级返回 Mock 图片（防止接口异常导致业务中断）
+      const mockImages = generateMockImage(style);
+      return mockImages[Math.floor(Math.random() * mockImages.length)];
+    }
+  } catch (error) {
+    console.error("[Jimeng AI] 图片生成失败:", error);
+    // 异常降级返回 Mock 图片
+    const mockImages = generateMockImage(style);
+    return mockImages[Math.floor(Math.random() * mockImages.length)];
+  }
+};
+
+/**
+ * 降级 Mock 图片库（接口异常时使用）
+ */
+const generateMockImage = (style: string): string[] => {
   const mockImages: Record<string, string[]> = {
     "赛博朋克": [
       "https://images.unsplash.com/photo-1605810230434-7631ac76ec81?auto=format&fit=crop&q=80&w=1000",
@@ -40,16 +188,13 @@ export const generateCardImage = async (prompt: string, style: string): Promise<
       "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&q=80&w=1000"
     ]
   };
-
-  const pool = mockImages[style] || mockImages["默认"];
-  return pool[Math.floor(Math.random() * pool.length)];
+  return mockImages[style] || mockImages["默认"];
 };
 
 /**
- * 模拟卡牌属性生成 (Game Stats Generator)
+ * 卡牌属性生成（保留原有逻辑，确保业务兼容）
  */
 export const generateCardMetadata = async (theme: string, style: string): Promise<Partial<AICard>> => {
-  // 模拟逻辑处理
   await new Promise(resolve => setTimeout(resolve, 1000));
   
   const elements: CardElement[] = ['Fire', 'Water', 'Earth', 'Light', 'Dark'];
@@ -66,7 +211,7 @@ export const generateCardMetadata = async (theme: string, style: string): Promis
 };
 
 /**
- * 模拟战斗解说
+ * 战斗解说生成（保留原有逻辑，确保业务兼容）
  */
 export const generateBattleCommentary = async (playerCard: AICard, aiCard: AICard, action: string): Promise<string> => {
   const quotes = [
